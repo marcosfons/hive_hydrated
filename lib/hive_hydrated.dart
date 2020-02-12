@@ -1,6 +1,7 @@
 library hive_hydrated;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:hive/hive.dart';
 import 'package:meta/meta.dart';
@@ -13,27 +14,25 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
 
   String _boxName;
   _Wrapper _wrapper;
-
-  // T Function(String value) _hydrate;
-  // String Function(T value) _persist;
-  
   T _seedValue;
 
   String get boxName => this._boxName;
 
   HiveHydratedSubject._(
     this._boxName,
+    this._wrapper,
+    String hivePath,
     StreamController<T> controller,
     Stream<T> observable,
-    this._wrapper,
   ) : super(controller, observable) {
+    Hive.init(hivePath);
     _hydrateSubject();
   }
-
 
   factory HiveHydratedSubject({
     @required String boxName,
     T seedValue,
+    String hivePath,
     bool sync = false
   }) {
 
@@ -44,8 +43,13 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
 
     final wrapper = _Wrapper<T>(seedValue);
 
+    if(hivePath == null) 
+      hivePath = Directory.current.path;
+
     return HiveHydratedSubject._(
       boxName,
+      wrapper,
+      hivePath,
       controller,
       Rx.defer<T>(
         () => wrapper.latestValue == null
@@ -53,7 +57,6 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
             : controller.stream
                 .startWith(wrapper.latestValue),
         reusable: true),
-      wrapper
     );
   }
   
@@ -67,30 +70,30 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
   T get value => _wrapper.latestValue;
 
   @override
+  Future<dynamic> close() {
+    Hive.box(_boxName).close();
+    return super.close();
+  }
+
+  @override
   void onAdd(T event) { 
     _wrapper.latestValue = event;
     _persist(event);
   }
 
   void _hydrateSubject() {
-    final box = Hive.box(_boxName);
-    final value = box.getAt(0);
-
-    if(value != null && value != _seedValue) {
-      add(value);
-    }
-
-    box.close();
+    Hive.openBox(_boxName)
+      .then((box) {
+        final value = box.get(0);
+        if(value != null && value != _seedValue)
+          add(value);
+      });
   }
 
   void _persist(T value) {
-    final box = Hive.box(_boxName);
-    box.putAt(0, value);
-    box.close();
+    Hive.box(_boxName).put(0, value);
   }
-
 }
-
 
 
 class _Wrapper<T> {
