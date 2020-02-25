@@ -51,7 +51,7 @@ packages:
     source: hosted
     version: "2.1.1"
   crypto:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
       name: crypto
       url: "https://pub.dartlang.org"
@@ -73,7 +73,7 @@ packages:
       name: hive
       url: "https://pub.dartlang.org"
     source: hosted
-    version: "1.4.0"
+    version: "1.4.1"
   image:
     dependency: transitive
     description:

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:hive_hydrated/hive_hydrated.dart';
+import 'package:path_provider/path_provider.dart';
 
 void _setTargetPlatformForDesktop() {
   // No need to handle macOS, as it has now been added to TargetPlatform.
@@ -36,9 +37,16 @@ class ExamplePage extends StatefulWidget {
 
 class _ExamplePageState extends State<ExamplePage> {
 
+  static Future<String> getPath() async {
+    final Directory directory = await getApplicationDocumentsDirectory();
+    return directory.path;
+  }
+
   final HiveHydratedSubject<int> _controller = HiveHydratedSubject<int>(
     boxName: 'teste',
-    seedValue: 0,
+    firstValue: 80,
+    // seedValue: 3,
+    hivePathAsync: getPath
   );
 
   @override
@@ -58,16 +66,33 @@ class _ExamplePageState extends State<ExamplePage> {
       appBar: AppBar(
         title: Text('Teste Hive Hydrated'),
       ),
-      body: Center(
-        child: StreamBuilder<int>(
-          stream: _controller.stream,
-          builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-            if(snapshot.hasData)
-              return Text('O valor é: ${snapshot.data}');
-            else if(snapshot.hasError)
-              return Text('Ocorreu um erro!');
-            return CircularProgressIndicator();
-          }
+      body: Container(
+        child: Center(
+          child: StreamBuilder<int>(
+            stream: _controller.stream,
+            builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+              print(snapshot.data);
+              if(snapshot.hasData)
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Slider(
+                      min: 0,
+                      max: 100,
+                      label: snapshot.data.toString(),
+                      value: snapshot.data.toDouble(),
+                      onChanged: (v) =>_controller.add(v.toInt()),
+                    ),
+                    Container(height: 10,),
+                    Text(snapshot.data.toString())
+                  ],
+                );
+                // return Text('O valor é: ${snapshot.data}');
+              else if(snapshot.hasError)
+                return Text('Ocorreu um erro!');
+              return CircularProgressIndicator();
+            }
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(

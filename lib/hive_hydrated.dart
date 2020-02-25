@@ -1,7 +1,6 @@
 library hive_hydrated;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:hive/hive.dart';
 import 'package:meta/meta.dart';
@@ -14,42 +13,60 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
 
   String _boxName;
   _Wrapper _wrapper;
-  T _seedValue;
+  Box<T> _box;
+  StreamSubscription _boxSubscription;
 
   String get boxName => this._boxName;
 
   HiveHydratedSubject._(
     this._boxName,
     this._wrapper,
-    String hivePath,
+    T firstValue,
     StreamController<T> controller,
     Stream<T> observable,
+    String hivePath,
+    Future<String> Function() hivePathAsync,
+    bool hiveAlreadyInitiated
   ) : super(controller, observable) {
-    Hive.init(hivePath);
-    _hydrateSubject();
+    
+    if(hiveAlreadyInitiated)
+      _boxInitialize(boxName, firstValue);
+    else if(hivePath != null) {
+      Hive.init(hivePath);
+      _boxInitialize(boxName, firstValue);
+    } else {
+      hivePathAsync()
+      .then((path) async {
+        Hive.init(path);
+        _boxInitialize(boxName, firstValue);
+      })
+      .catchError((e) => throw(e));
+    }
   }
 
   factory HiveHydratedSubject({
     @required String boxName,
     T seedValue,
+    T firstValue,
+    bool alreadyOpen = false,
     String hivePath,
-    bool sync = false
+    Future<String> Function() hivePathAsync,
+    bool sync = false,
+    TypeAdapter<T> adapter
   }) {
+    assert(hivePath != null || hivePathAsync != null);
 
     // ignore: close_sinks
-    final controller = StreamController<T>.broadcast(
-      sync: sync
-    );
-
+    final controller = StreamController<T>.broadcast(sync: sync);
+    
     final wrapper = _Wrapper<T>(seedValue);
-
-    if(hivePath == null) 
-      hivePath = Directory.current.path;
-
+    
+    if(adapter != null) Hive.registerAdapter(adapter);
+    
     return HiveHydratedSubject._(
       boxName,
       wrapper,
-      hivePath,
+      firstValue,
       controller,
       Rx.defer<T>(
         () => wrapper.latestValue == null
@@ -57,6 +74,9 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
             : controller.stream
                 .startWith(wrapper.latestValue),
         reusable: true),
+      hivePath,
+      hivePathAsync,
+      alreadyOpen
     );
   }
   
@@ -71,27 +91,44 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
 
   @override
   Future<dynamic> close() {
-    Hive.box(_boxName).close();
+    if(_boxSubscription != null)
+      _boxSubscription.cancel();
+    _box.close();
     return super.close();
   }
 
   @override
-  void onAdd(T event) { 
-    _wrapper.latestValue = event;
-    _persist(event);
+  void onAdd(T event) {
+    if(_wrapper.latestValue != event) {
+      _wrapper.latestValue = event;
+      _persist(event);
+    }
   }
 
-  void _hydrateSubject() {
-    Hive.openBox(_boxName)
-      .then((box) {
-        final value = box.get(0);
-        if(value != null && value != _seedValue)
-          add(value);
-      });
+  void _boxInitialize(String boxName, T firstValue) {
+    Hive.openBox<T>(_boxName)
+      .then((Box<T> box) {
+        final T value = box.get(0);
+        if (value != null)
+          addFirst(value);
+        else if(firstValue != null)
+          addFirst(firstValue);
+        _box = box;
+
+        _boxSubscription = _box.watch()
+          .map<T>((BoxEvent event) => event.value)
+          .listen((T value) => add(value));
+      }).catchError((e) => throw(e));
+  }
+
+  void addFirst(T value) {
+    _wrapper.latestValue = value;
+    add(value);
   }
 
   void _persist(T value) {
-    Hive.box(_boxName).put(0, value);
+    _box.put(0, value);
+    // Hive.box<T>(_boxName).put(0, value);
   }
 }
 
