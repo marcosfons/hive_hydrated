@@ -8,7 +8,6 @@ import 'package:meta/meta.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:rxdart/subjects.dart';
 
-
 class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
 
   String _boxName;
@@ -78,6 +77,8 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
       hivePathAsync,
       alreadyOpen
     );
+
+
   }
   
   @override
@@ -130,6 +131,16 @@ class HiveHydratedSubject<T> extends Subject<T> implements ValueStream<T> {
     _box.put(0, value);
     // Hive.box<T>(_boxName).put(0, value);
   }
+
+
+  @override
+  StreamController<T> createForwardingController({
+    void Function() onListen,
+    void Function() onCancel,
+    bool sync = false,
+  }) =>
+      BehaviorSubject(onCancel: onCancel, onListen: onListen, sync: sync);
+
 }
 
 
